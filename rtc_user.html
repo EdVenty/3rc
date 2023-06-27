@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body onkeydown="onkey(event)" onkeyup="onup(event)">
+    <style>
+        html, body {
+            position:fixed;
+            top:0;
+            bottom:0;
+            left:0;
+            right:0;
+        }
+        body{
+            margin: 0;
+            background-color: black;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .start{
+            padding: 1em;
+            background-color: black;
+            border: 3px solid white;
+            border-radius: 300px;
+            color: white;
+            width: 100%;
+            margin: 10px;
+        }
+        #stats{
+            color: white;
+            position: absolute;
+        }
+        #config{
+            position: absolute;
+            margin-left: auto;
+            margin-right: auto;
+            margin-top: auto;
+            margin-bottom: auto;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            text-align: center;
+            width: 60%;
+            height: fit-content;
+            z-index: 1;
+        }
+    </style>
+    <div id="config">
+        <button onclick="start('320x240')" class="start">Start 320x240</button>
+        <button onclick="start('640x480')" class="start">Start 640x480</button>
+    </div>
+    <div id="stats">
+        <div id="warn"></div>
+    </div>
+    <!-- <audio id="audio" autoplay="true"></audio> -->
+    <video id="video" autoplay="true" playsinline="true"></video>
+    <script>
+        window.camera_size = "320x240";
+        var channel = null;
+        var pc = null;
+        var expected_framerate = 0;
+        var pressed = new Set();
+        var movingCodes = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
+        var gimbalCodes = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space']);
+        var laserCodes = new Set(['KeyL']);
+        var gimbalVert = 0;
+        var gimbalHoriz = 0;
+        var laserValue = 0;
+        function processMoving(){
+            let speed = 0;
+            if(pressed.has('KeyW')){
+                speed -= 100;
+            }
+            if(pressed.has('KeyS')){
+                speed += 100;
+            }
+            let leftMotor = speed;
+            let rightMotor = speed;
+            if(pressed.has('KeyA')){
+                leftMotor -= 70;
+                rightMotor += 70;
+            }
+            if(pressed.has('KeyD')){
+                leftMotor += 70;
+                rightMotor -= 70;
+            }
+            channel.send(JSON.stringify({
+                type: 'motors',
+                left: leftMotor,
+                right: rightMotor
+            }))
+        }
+        function processGimbal(){
+            if(pressed.has('ArrowUp')){
+                gimbalVert -= 2;
+            }
+            if(pressed.has('ArrowDown')){
+                gimbalVert += 2;
+            }
+            if(pressed.has('ArrowLeft')){
+                gimbalHoriz += 2;
+            }
+            if(pressed.has('ArrowRight')){
+                gimbalHoriz -= 2;
+            }
+            if(pressed.has('Space')){
+                gimbalHoriz = 0;
+                gimbalVert = 0;
+            }
+            // validation
+            if(gimbalHoriz > 90){
+                gimbalHoriz = 90;
+            }
+            else if(gimbalHoriz < -90){
+                gimbalHoriz = -90;
+            }
+
+            if(gimbalVert > 80){
+                gimbalVert = 80;
+            }
+            else if(gimbalVert < -30){
+                gimbalVert = -30;
+            }
+            channel.send(JSON.stringify({
+                'type': 'gimbal',
+                vertical: gimbalVert,
+                horizontal: gimbalHoriz
+            }))
+        }
+        function processLaser(){
+            if(pressed.has('KeyL')){
+                laserValue = 255;
+            }
+            else{
+                laserValue = 0;
+            }
+            channel.send(JSON.stringify({
+                'type': 'laser',
+                value: laserValue
+            }))
+        }
+        function onkey(event){
+            console.log(event.code);
+            pressed.add(event.code);
+            if(movingCodes.has(event.code)){
+                processMoving();
+            }
+            if(gimbalCodes.has(event.code)){
+                processGimbal();
+            }
+            if(laserCodes.has(event.code)){
+                processLaser();
+            }
+        }
+        function onup(event){
+            pressed.delete(event.code);
+            if(movingCodes.has(event.code)){
+                processMoving();
+            }
+            if(gimbalCodes.has(event.code)){
+                processGimbal();
+            }
+            if(laserCodes.has(event.code)){
+                processLaser();
+            }
+        }
+        function negotiate() {
+            // pc.addTransceiver('video', {direction: 'recvonly'});
+            // pc.addTransceiver('audio', {direction: 'recvonly'});
+            return pc.createOffer().then(function(offer) {
+                return pc.setLocalDescription(offer);
+            }).then(function() {
+                // wait for ICE gathering to complete
+                return new Promise(function(resolve) {
+                    if (pc.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        function checkState() {
+                            if (pc.iceGatheringState === 'complete') {
+                                pc.removeEventListener('icegatheringstatechange', checkState);
+                                resolve();
+                            }
+                        }
+                        pc.addEventListener('icegatheringstatechange', checkState);
+                    }
+                });
+            }).then(() => {
+                var offer = pc.localDescription;
+                return fetch('/offer', {
+                    body: JSON.stringify({
+                        sdp: offer.sdp,
+                        type: offer.type,
+                        "camera_size": window.camera_size
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    method: 'POST'
+                });
+            }).then(function(response) {
+                return response.json();
+            }).then(function(answer) {
+                expected_framerate = answer.expected_framerate;
+                setInterval(ping, 500)
+                return pc.setRemoteDescription(answer);
+            }).catch(function(e) {
+                alert(e);
+            });
+        }
+        function ping(){
+            channel.send(JSON.stringify({
+                'type': 'ping'
+            }))
+        }
+        async function checkStats(){
+            const stats = await pc.getStats(null);
+            var statsOutput = "";
+
+            stats.forEach(report => {
+            if (report.type === "inbound-rtp" && report.kind === "video") {
+                // Object.keys(report).forEach(statName => {
+                //     statsOutput += `<strong>${statName}:</strong> ${report[statName]}<br>\n`;
+                // });
+                // if(report.framesPerSecond < expected_framerate){
+                //     document.getElementById('warn').innerText = 'Low framerate!';
+                // }
+                // else{
+                //     document.getElementById('warn').innerText = 'Stable.';
+                // }
+                document.getElementById('warn').innerText = `${report.framesPerSecond} fps`;
+            }
+            });
+        }
+        function start(q){
+            window.camera_size = q;
+            var config = {
+                sdpSemantics: 'unified-plan'
+            };
+            pc = new RTCPeerConnection(config);
+
+            setInterval(checkStats, 1000);
+
+            channel = pc.createDataChannel('control');
+            // channel.onopen += () => {
+            //     console.log("Channel opened.");
+            //     document.getElementById('connect').innerText = "Connected!";
+            // };
+            // channel.close += () => {
+            //     console.log("Channel closed.");
+            //     document.getElementById('connect').innerText = "Not connected";
+            // };
+            channel.addEventListener("open", (event) => {
+                console.log("Channel opened.");
+                document.getElementById('config').hidden = true;
+            });
+            channel.addEventListener("close", (event) => {
+                console.log("Channel closed.");
+                document.getElementById('config').hidden = false;
+            });
+            channel.addEventListener("message", (event) => {
+                console.log(event);
+            });
+
+            let notifier = pc.createDataChannel('notify');
+            notifier.addEventListener("open", (event) => {
+                console.log("Notifier opened.");
+            });
+            notifier.addEventListener("close", (event) => {
+                console.log("Notifier closed.");
+            });
+
+            notifier.addEventListener("message", (event) => {
+                console.log(event);
+            })
+            pc.addTransceiver('video', {direction: 'recvonly'});
+            // pc.addTransceiver('audio', {direction: 'recvonly'});
+            pc.addEventListener('track', function(evt) {
+                if (evt.track.kind == 'video') {
+                    document.getElementById('video').srcObject = evt.streams[0];
+                } else {
+                    document.getElementById('audio').srcObject = evt.streams[0];
+                }
+            });
+
+            negotiate();
+        }
+    </script>
+</body>
+</html>

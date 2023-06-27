@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+service Notifier {
+    rpc SetStatusBox (StatusBox) returns (Status2) {}
+}
+
+message StatusBox {
+    int32 Id = 1;
+    string Value = 2;
+}
+
+message Status2 {
+    bool Ok = 1;
+    double Timestamp = 2;
+}

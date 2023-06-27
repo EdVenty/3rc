@@ -1,0 +1,22 @@
+{
+    "Windows": {
+        "camera": "video=Surface Camera Rear",
+        "format": "dshow",
+        "codec": "video/VP9",
+        "config": {
+            "video_size": "640x480",
+            "framerate": "30",
+            "min_framerate": "25"
+        }
+    },
+    "Linux": {
+        "camera": "/dev/video0",
+        "format": "v4l2",
+        "codec": "video/VP9",
+        "config": {
+            "video_size": "320x240",
+            "framerate": "30",
+            "min_framerate": "25"
+        }
+    }
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Robot service.
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+User=pi
+ExecStart=python3 /home/pi/3rc/start.py
+TimeoutStartSec = infinity
+
+[Install]
+WantedBy=multi-user.target

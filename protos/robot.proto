@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+service Robot {
+  rpc SetThrust (MotorsThrust) returns (Status) {}
+  rpc SetGimbal (GimbalPosition) returns (Status) {}
+  rpc SetLaser (LaserState) returns (Status) {}
+}
+
+message MotorsThrust {
+  int32 LeftMotor = 1;
+  int32 RightMotor = 2;
+}
+
+message GimbalPosition {
+  int32 VerticalAngle = 1;
+  int32 HorizontalAngle = 2;
+}
+
+message LaserState {
+  int32 Power = 1;
+}
+
+message Status {
+  bool Ok = 1;
+  double Timestamp = 2;
+}

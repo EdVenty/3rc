@@ -1,0 +1,4 @@
+aiortc
+aiohttp
+grpc==1.44.0
+grpc-tools==1.44.0
